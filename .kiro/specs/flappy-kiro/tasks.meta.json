@@ -1,0 +1,540 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create `index.html` scaffold with inline `<style>` and `<script>`, a `<canvas>` at logical resolution 800×600, dark page background, and no external URLs (local relative references only)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295363971
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295375303
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295438507
+      }
+    ],
+    "1.2 Define the frozen `Config` object with all tunable constants and the `palette`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295365778
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295441343
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295520428
+      }
+    ],
+    "2.1 Implement `integratePlayer(player, dt, config)` and `applyJump(player, config)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295365919
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295525239
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295585958
+      }
+    ],
+    "2.4 Implement derived horizontal position and `playerHitbox(player, config)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366005
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295588617
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295632136
+      }
+    ],
+    "3.1 Implement `spawnObstacle(config, gapSize, prevGapCenterY, rng)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366083
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295635114
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295850820
+      }
+    ],
+    "3.2 Implement `updateObstacles(obstacles, dt, speed)` and `shouldSpawn(elapsed, config)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366189
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295854150
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295912375
+      }
+    ],
+    "4.1 Implement `maybeSpawnCoin(obstacle, config, rng)` and `tryCollectCoin(playerBox, coin)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366299
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295915224
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295975604
+      }
+    ],
+    "5.1 Implement `aabbIntersect(a, b)`, `hitsAnyObstacle(playerBox, obstacles)`, and `boundaryCross(playerBox, canvasHeight)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366382
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295979099
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296072649
+      }
+    ],
+    "5.2 Implement `scoreGapPasses(profit, obstacles, playerX)` and `addCoinBonus(profit, config)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366468
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296080086
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296157577
+      }
+    ],
+    "6.1 Implement `difficultyLevel(profit, config)`, `speedForLevel(level, config)`, and `gapForLevel(level, config)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366562
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296160428
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296313141
+      }
+    ],
+    "7.1 Implement `updateChart(segments, dt, speed, level, config, rng)`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366649
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296316081
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296512745
+      }
+    ],
+    "8. Checkpoint - pure logic core complete": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366732
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296517018
+      }
+    ],
+    "9.1 Implement `Storage` with `getHighScore()` / `setHighScore(n)` over `localStorage`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366815
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296520798
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296749036
+      }
+    ],
+    "9.4 Implement `AudioManager` for `jump` and `gameover`": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366915
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296752029
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296991361
+      }
+    ],
+    "9.5 Implement `CanvasScaler` that fits the canvas to the viewport preserving 800:600": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295366997
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296994414
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297246126
+      }
+    ],
+    "10.1 Implement `InputHandler` binding keydown(Space) and pointerdown, routing one input to exactly one action per FSM state": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367084
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297251077
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297359674
+      }
+    ],
+    "11.1 Implement the delta-time game loop over `requestAnimationFrame` with the clamp": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367163
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297370058
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297558393
+      }
+    ],
+    "11.4 Implement the `START` / `PLAYING` / `GAME_OVER` FSM and the per-frame PLAYING update": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367245
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297376299
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297561396
+      }
+    ],
+    "11.6 Implement restart with the 500 ms lockout producing a canonical fresh session": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367333
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297379713
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297565189
+      }
+    ],
+    "12. Checkpoint - playable loop complete": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367415
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297568429
+      }
+    ],
+    "13.1 Implement the `Renderer` for the chart background and Ghosty sprite": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367500
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297575102
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297918831
+      }
+    ],
+    "13.2 Render candlestick obstacles and gold coins": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367604
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297577898
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297922125
+      }
+    ],
+    "13.3 Render the Start Screen and the Game Over Screen": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367738
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297581581
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297924879
+      }
+    ],
+    "13.4 Render the HUD bar with Score, High, and Volatility": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367823
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297584251
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297927658
+      }
+    ],
+    "14.1 Enforce the palette and typography consistently across all three screens": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295367927
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297931095
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298110934
+      }
+    ],
+    "15.1 Confirm `index.html` is fully self-contained and the game runs end to end": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295368014
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298114082
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298279057
+      }
+    ],
+    "16. Final checkpoint - game complete": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295368092
+      },
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298282197
+      }
+    ],
+    "1. Bootstrap single-file game shell and Config": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295520522
+      }
+    ],
+    "2. Implement physics and player geometry (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295632222
+      }
+    ],
+    "3. Implement obstacle system (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295912495
+      }
+    ],
+    "4. Implement coin system (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793295975798
+      }
+    ],
+    "5. Implement collision, boundaries, and scoring (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296157680
+      }
+    ],
+    "6. Implement difficulty scaling (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296313275
+      }
+    ],
+    "7. Implement chart generator (pure logic core)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793296512870
+      }
+    ],
+    "9. Implement IO layer: storage, audio, canvas scaler": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297246176
+      }
+    ],
+    "10. Implement input handler with FSM routing": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297359721
+      }
+    ],
+    "11. Implement game loop, FSM, and restart (wiring)": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297565252
+      }
+    ],
+    "13. Implement renderer: screens, sprites, and HUD": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793297927756
+      }
+    ],
+    "14. Apply trading/finance visual polish": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298111023
+      }
+    ],
+    "15. Final integration and smoke verification": [
+      {
+        "executionId": "9271df01-5466-4b04-8034-7f30d3d6c308",
+        "chatSessionId": "sess_a77e666d-cfe1-4619-897d-2dbdf7d8bac4",
+        "timestamp": 1793298279132
+      }
+    ]
+  }
+}

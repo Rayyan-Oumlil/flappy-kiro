@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Kiro</title>
+  <!--
+    Flappy Kiro — single-file, dependency-free browser game.
+    Runs directly from the file:// protocol: all CSS/JS is inline and all
+    assets are referenced via local relative paths (assets/). No external
+    URLs, no CDN, no server, no build step. (Requirement 1.1)
+
+    Logical canvas resolution is a fixed 800 x 600 backing store; CSS scales
+    the element to the viewport while preserving the 4:3 aspect ratio.
+    (Requirement 13.5)
+  -->
+  <style>
+    /* Dark page background = Config.palette.bg (#0b0e14) — the single palette
+       source, so the page letterbox matches every screen's canvas bg (Req 13.1). */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #0b0e14;
+      overflow: hidden;
+    }
+
+    /* Center the canvas in the viewport. */
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* The canvas keeps its 800x600 backing store; CSS sizing is applied by
+       the CanvasScaler in a later task. For now, display it as-is, centered,
+       with a subtle backdrop so the dark canvas is distinguishable. */
+    #game {
+      display: block;
+      background-color: #0b0e14;
+    }
+  </style>
+</head>
+<body>
+  <!-- Logical resolution 800 x 600 backing store (Requirements 1.2, 13.5). -->
+  <canvas id="game" width="800" height="600"></canvas>
+
+  <script>
+    'use strict';
+
+    // =========================================================================
+    // Config — single frozen object defining every tunable constant plus the
+    // trading/finance palette. All velocity/acceleration values are expressed
+    // in per-second units (Req 14.2) and the object is frozen so no runtime
+    // code can mutate a tunable. (Requirements 1.3, 3.6, 6.6, 10.3, 14.2)
+    // =========================================================================
+    const Config = Object.freeze({
+      // --- Canvas (logical resolution) ---
+      canvasWidth: 800,          // px  (Req 13.5)
+      canvasHeight: 600,         // px  (Req 13.5)
+
+      // --- Physics (per-second units, Req 14.2) ---
+      gravity: 1600,             // px/s^2 downward          (Req 1.3, 3.2)
+      jumpImpulse: 480,          // px/s upward (applied as vy = -jumpImpulse) (Req 3.3)
+      maxDeltaTime: 0.1,         // s  (clamp)               (Req 14.3)
+
+      // --- Player (Ghosty) ---
+      playerXRatio: 0.20,        // fixed at 20% canvas width (Req 3.1, 3.5)
+      playerStartYRatio: 0.50,   // 50% canvas height         (Req 3.1)
+      hitboxScale: 0.80,         // 80% of sprite w/h         (Req 3.7)
+      spriteWidth: 48,           // px — rendered Ghosty width (image scaled to this regardless of PNG natural size)
+      spriteHeight: 48,          // px — rendered Ghosty height
+
+      // --- Scroll speed / difficulty (Req 10.3) ---
+      initialSpeed: 180,         // px/s                      (Req 1.3)
+      speedIncrement: 15,        // px/s per level
+      maxSpeed: 360,             // px/s
+      volatilityStep: 10,        // profit interval per level (Req 10.1)
+
+      // --- Obstacles / gaps (Req 10.3) ---
+      initialGap: 200,           // px                        (Req 1.3, 4.5)
+      gapReduction: 8,           // px per level
+      minGap: 130,               // px
+      maxGapDelta: 180,          // px — max vertical gap-center change between consecutive obstacles
+      obstacleWidth: 70,         // px
+      wickWidth: 8,              // px (candlestick wick)
+      spawnInterval: 1.6,        // s between obstacle pairs  (Req 1.3, 4.7)
+
+      // --- Coins (Req 6.6) ---
+      coinBonus: 5,              // profit added on collect
+      coinSpawnChance: 0.5,      // probability per gap       (Req 6.1)
+      coinRadius: 14,            // px
+
+      // --- Restart ---
+      restartLockoutMs: 500,     // input-ignore window       (Req 8.2)
+
+      // --- Theme / UI (Req 13) ---
+      minFontSize: 14,           // px                        (Req 13.2)
+      palette: {
+        bg:   '#0b0e14',         // dark background
+        up:   '#16c784',         // green (positive)
+        down: '#ea3943',         // red (negative)
+        text: '#e6e8ec',         // light text on dark
+        gold: '#f5c542',         // coin
+      },
+    });
+
+    // =========================================================================
+    // Pure Logic Core (physics, geometry, obstacles, coins, collision,
+    // scoring, difficulty, chart) — added in tasks 2–7.
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Physics (Requirements 3.2, 3.3, 3.4, 14.1, 14.2 / Design: Physics)
+    //
+    // Both functions are PURE: they read only their arguments (including the
+    // injected `config`, never the global Config), perform no DOM access or
+    // global reads, do not mutate the input `player`, and return a NEW
+    // { y, vy } object. This keeps the core deterministic and testable.
+    // -------------------------------------------------------------------------
+
+    // Apply gravity and integrate vertical motion for one frame.
+    // Semi-implicit (symplectic) Euler: gravity is added to the velocity first,
+    // then position is advanced using that updated velocity. All values are in
+    // per-second units, so multiplying by `dt` makes motion frame-rate
+    // independent (Requirements 3.2, 14.1, 14.2).
+    function integratePlayer(player, dt, config) {
+      var newVy = player.vy + config.gravity * dt; // vy = vy + gravity*dt
+      var newY = player.y + newVy * dt;            // y  = y  + vy*dt
+      return { y: newY, vy: newVy };
+    }
+
+    // Apply a single upward impulse. The vertical velocity is set to the
+    // configured impulse unconditionally, regardless of the current velocity
+    // (Requirements 3.3, 3.4). Position is unchanged; the impulse takes effect
+    // over subsequent integration frames.
+    function applyJump(player, config) {
+      return { y: player.y, vy: -config.jumpImpulse };
+    }
+
+    // Ghosty's fixed horizontal CENTER x. Ghosty never moves horizontally; its
+    // x is derived purely from Config as `playerXRatio * canvasWidth`
+    // (Requirements 3.1, 3.5). Pure: reads only the passed-in config.
+    function playerX(config) {
+      return config.playerXRatio * config.canvasWidth;
+    }
+
+    // Ghosty's collision rectangle: 80% of the rendered sprite size, centered
+    // on the sprite's center point (playerX, player.y). The sprite is drawn at
+    // the Config-defined size (spriteWidth × spriteHeight), so the hitbox is
+    // `hitboxScale * spriteWidth` wide × `hitboxScale * spriteHeight` tall —
+    // derived from the rendered size, NOT the PNG's natural dimensions
+    // (Requirements 3.7). Returns a fresh { x, y, w, h } rect. Pure.
+    function playerHitbox(player, config) {
+      var w = config.hitboxScale * config.spriteWidth;
+      var h = config.hitboxScale * config.spriteHeight;
+      var cx = playerX(config);   // horizontal center
+      var cy = player.y;          // vertical center
+      return { x: cx - w / 2, y: cy - h / 2, w: w, h: h };
+    }
+
+    // -------------------------------------------------------------------------
+    // Obstacle System (Requirements 4.1, 4.5, 4.6 / Design: Obstacle System)
+    //
+    // All functions here are PURE: they read only their arguments (including
+    // the injected `config` and injected `rng`), perform no DOM access or
+    // global reads, do not mutate their inputs, and return fresh objects. The
+    // `rng` is an injected function returning a float in [0, 1); injecting it
+    // keeps spawning deterministic and testable (it can be mocked).
+    // -------------------------------------------------------------------------
+
+    // Create one obstacle pair at the right edge of the canvas with a randomly
+    // chosen gap center.
+    //
+    // The gap center is chosen so that:
+    //   1. It stays within Config.maxGapDelta vertical pixels of the PREVIOUS
+    //      obstacle's gap center (prevGapCenterY), so consecutive gaps are
+    //      reachable from one another (Design Property 30). On the very first
+    //      obstacle (prevGapCenterY null/undefined) it is drawn uniformly
+    //      across the full valid on-canvas range instead.
+    //   2. It is then CLAMPED to the valid on-canvas range
+    //      [gapSize/2, canvasHeight - gapSize/2] so both the top and bottom
+    //      pillars remain fully within the canvas bounds (Req 4.6, Property 7).
+    //
+    // Clamping last guarantees the result is always valid even near the canvas
+    // edges, while the delta constraint keeps the gap reachable. Returns a new
+    // Obstacle with x at the right edge (canvasWidth), passed=false, coin=null.
+    function spawnObstacle(config, gapSize, prevGapCenterY, rng) {
+      // Valid on-canvas range for the gap center.
+      var lo = gapSize / 2;
+      var hi = config.canvasHeight - gapSize / 2;
+
+      var candidate;
+      if (prevGapCenterY === null || prevGapCenterY === undefined) {
+        // First obstacle: pick uniformly across the full valid range.
+        candidate = lo + rng() * (hi - lo);
+      } else {
+        // Subsequent obstacles: constrain to within maxGapDelta of the
+        // previous gap center, picked uniformly in that window.
+        var delta = config.maxGapDelta;
+        candidate = (prevGapCenterY - delta) + rng() * (2 * delta);
+      }
+
+      // Clamp to the valid on-canvas range so both pillars stay fully visible.
+      var gapCenterY = Math.min(hi, Math.max(lo, candidate));
+
+      return {
+        x: config.canvasWidth,   // left edge starts at the right of the canvas
+        gapCenterY: gapCenterY,
+        gapSize: gapSize,
+        width: config.obstacleWidth,
+        passed: false,
+        coin: null,
+      };
+    }
+
+    // Derive the top and bottom pillar rectangles for an obstacle. Pure helper
+    // shared by the renderer and collision so the geometry is defined once.
+    //   top:    { x, y: 0,                      w, h: gapCenterY - gapSize/2 }
+    //   bottom: { x, y: gapCenterY + gapSize/2, w, h: canvasHeight - (gapCenterY + gapSize/2) }
+    // (Design: Data Models — Obstacle derived pillar rects.)
+    function obstaclePillars(obstacle, config) {
+      var halfGap = obstacle.gapSize / 2;
+      var topH = obstacle.gapCenterY - halfGap;
+      var bottomY = obstacle.gapCenterY + halfGap;
+      return {
+        top: {
+          x: obstacle.x,
+          y: 0,
+          w: obstacle.width,
+          h: topH,
+        },
+        bottom: {
+          x: obstacle.x,
+          y: bottomY,
+          w: obstacle.width,
+          h: config.canvasHeight - bottomY,
+        },
+      };
+    }
+
+    // Advance every obstacle to the left by `speed * dt` and drop any that have
+    // fully scrolled off the left edge of the canvas (Requirements 4.3, 4.4 /
+    // Design: Obstacle System). PURE: returns a NEW array of NEW obstacle
+    // objects and never mutates the inputs.
+    //
+    // Each obstacle's x decreases by `speed * dt`. If an obstacle carries a
+    // coin, the coin travels with it: the coin's x shifts by the SAME amount,
+    // while coin.y, coin.r, and coin.collected are preserved. An obstacle is
+    // culled once its right edge (`x + width`) is at or past the left edge
+    // (<= 0); because the coin lives on the obstacle, a culled obstacle takes
+    // its coin with it automatically (Design Property 13).
+    function updateObstacles(obstacles, dt, speed) {
+      var distance = speed * dt;
+      var moved = [];
+      for (var i = 0; i < obstacles.length; i++) {
+        var obstacle = obstacles[i];
+        var newX = obstacle.x - distance;
+
+        // Carry over all fields, shifting x. Shift the coin with the obstacle.
+        var newObstacle = {
+          x: newX,
+          gapCenterY: obstacle.gapCenterY,
+          gapSize: obstacle.gapSize,
+          width: obstacle.width,
+          passed: obstacle.passed,
+          coin: obstacle.coin
+            ? {
+                x: obstacle.coin.x - distance,
+                y: obstacle.coin.y,
+                r: obstacle.coin.r,
+                collected: obstacle.coin.collected,
+              }
+            : null,
+        };
+        moved.push(newObstacle);
+      }
+
+      // Cull obstacles whose right edge has reached or passed the left edge.
+      return moved.filter(function (o) {
+        return o.x + o.width > 0;
+      });
+    }
+
+    // Whether enough time has accumulated since the last spawn to emit a new
+    // obstacle (Requirement 4.7 / Design: Obstacle System). PURE. True iff the
+    // elapsed time meets or exceeds the configured spawn interval.
+    function shouldSpawn(elapsed, config) {
+      return elapsed >= config.spawnInterval;
+    }
+
+    // -------------------------------------------------------------------------
+    // Coin System (Requirements 6.1, 6.2, 6.3, 6.4 / Design: Coin System)
+    //
+    // All functions here are PURE: they read only their arguments and never
+    // mutate them. Coins live on their owning obstacle (so a culled obstacle
+    // takes its coin with it), but spawning returns just the Coin object — the
+    // caller attaches it to the obstacle.
+    // -------------------------------------------------------------------------
+
+    // Maybe spawn a coin for a freshly created obstacle (Requirements 6.1, 6.2 /
+    // Design: Coin System, Data Models — Coin). `rng` is an injected function
+    // returning a float in [0, 1). With probability config.coinSpawnChance,
+    // return a Coin positioned at the gap's horizontal midpoint
+    // (obstacle.x + obstacle.width / 2) and vertical midpoint
+    // (obstacle.gapCenterY); otherwise return null. PURE: does not mutate the
+    // obstacle. Condition: produce a coin iff rng() < config.coinSpawnChance.
+    function maybeSpawnCoin(obstacle, config, rng) {
+      if (rng() < config.coinSpawnChance) {
+        return {
+          x: obstacle.x + obstacle.width / 2,
+          y: obstacle.gapCenterY,
+          r: config.coinRadius,
+          collected: false,
+        };
+      }
+      return null;
+    }
+
+    // Test whether the player's hitbox overlaps a coin (Requirements 6.3, 6.4 /
+    // Design: Coin System). Returns a boolean — true iff the coin exists, is not
+    // already collected, and the playerBox ({x, y, w, h} rect) overlaps the
+    // coin's bounding box { x: coin.x - coin.r, y: coin.y - coin.r,
+    // w: 2*coin.r, h: 2*coin.r } via an axis-aligned bounding-box (AABB) test.
+    // PURE: tests overlap only. Marking collected and adding the bonus is wired
+    // into the game loop/scoring later.
+    function tryCollectCoin(playerBox, coin) {
+      if (!coin || coin.collected) {
+        return false;
+      }
+      var box = {
+        x: coin.x - coin.r,
+        y: coin.y - coin.r,
+        w: 2 * coin.r,
+        h: 2 * coin.r,
+      };
+      return playerBox.x < box.x + box.w &&
+             playerBox.x + playerBox.w > box.x &&
+             playerBox.y < box.y + box.h &&
+             playerBox.y + playerBox.h > box.y;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collision & Boundaries (Requirements 7.1, 7.2, 7.3 /
+    // Design: Collision & Boundaries)
+    //
+    // All functions here are PURE: they read only their arguments and never
+    // mutate them or touch the DOM. They reuse obstaclePillars() (Obstacle
+    // System) to derive the top/bottom pillar rects for each obstacle.
+    // -------------------------------------------------------------------------
+
+    // Axis-aligned bounding-box (AABB) overlap test for two {x, y, w, h} rects
+    // (Requirements 7.1, 6.3 / Design: Hitbox / Geometry). Returns true iff the
+    // two rectangles overlap. This is the shared, named version of the inline
+    // AABB check used inside tryCollectCoin. PURE.
+    function aabbIntersect(a, b) {
+      return a.x < b.x + b.w &&
+             a.x + a.w > b.x &&
+             a.y < b.y + b.h &&
+             a.y + a.h > b.y;
+    }
+
+    // Test whether the player's hitbox intersects the top OR bottom pillar of
+    // ANY obstacle (Requirement 7.1 / Design: Collision & Boundaries). Derives
+    // each obstacle's pillar rects via obstaclePillars(obstacle, config) and
+    // runs aabbIntersect against both. Returns true as soon as any overlap is
+    // found, false otherwise. PURE.
+    function hitsAnyObstacle(playerBox, obstacles, config) {
+      for (var i = 0; i < obstacles.length; i++) {
+        var pillars = obstaclePillars(obstacles[i], config);
+        if (aabbIntersect(playerBox, pillars.top) ||
+            aabbIntersect(playerBox, pillars.bottom)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Detect a canvas boundary crossing for the player's hitbox (Requirements
+    // 7.2, 7.3 / Design: Collision & Boundaries). Returns 'top' if the box's top
+    // edge is above the canvas top (playerBox.y < 0), 'bottom' if the box's
+    // bottom edge is below the canvas bottom
+    // (playerBox.y + playerBox.h > canvasHeight), otherwise null. If both are
+    // somehow true, 'top' takes precedence. PURE.
+    function boundaryCross(playerBox, canvasHeight) {
+      if (playerBox.y < 0) {
+        return 'top';
+      }
+      if (playerBox.y + playerBox.h > canvasHeight) {
+        return 'bottom';
+      }
+      return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Scoring (Requirements 5.1, 6.3, 6.6 / Design: Scoring)
+    //
+    // All functions here are PURE: they read only their arguments, never touch
+    // the DOM or globals, and never mutate their inputs. New values are
+    // returned; changed obstacle objects are fresh copies.
+    // -------------------------------------------------------------------------
+
+    // Award profit for every gap the player has just passed (Requirement 5.1 /
+    // Design: Scoring). For each obstacle, the gap's right edge is
+    // obstacle.x + obstacle.width. An obstacle is counted iff it is NOT yet
+    // `passed` AND the player's horizontal center has crossed that right edge
+    // (playerX > obstacle.x + obstacle.width). Counting an obstacle adds 1 to
+    // profit and yields a NEW obstacle object with passed=true; already-passed
+    // obstacles are copied through unchanged, so re-running the step on them
+    // leaves profit unchanged (idempotent). Each pair contributes at most once.
+    // Returns new { profit, obstacles } — inputs are never mutated. PURE.
+    function scoreGapPasses(profit, obstacles, playerX) {
+      var newProfit = profit;
+      var newObstacles = new Array(obstacles.length);
+      for (var i = 0; i < obstacles.length; i++) {
+        var obstacle = obstacles[i];
+        var gapRightEdge = obstacle.x + obstacle.width;
+        if (!obstacle.passed && playerX > gapRightEdge) {
+          newProfit += 1;
+          newObstacles[i] = Object.assign({}, obstacle, { passed: true });
+        } else {
+          newObstacles[i] = obstacle;
+        }
+      }
+      return { profit: newProfit, obstacles: newObstacles };
+    }
+
+    // Add the configured coin bonus to profit (Requirements 6.3, 6.6 /
+    // Design: Scoring). PURE: returns profit + config.coinBonus.
+    function addCoinBonus(profit, config) {
+      return profit + config.coinBonus;
+    }
+
+    // -------------------------------------------------------------------------
+    // Difficulty (Market Volatility) (Requirements 10.1, 10.2, 10.3 /
+    // Design: Difficulty)
+    //
+    // All functions here are PURE: they read only their arguments, never touch
+    // the DOM/canvas/audio/storage, and never mutate their inputs. Config is
+    // always passed in as a parameter.
+    //
+    // Speed and gap are derived as CLOSED-FORM functions of the difficulty
+    // level rather than by mutating state on each threshold crossing. This is
+    // the key decision behind design Property 22: because the values depend
+    // only on the level, a jump in profit (including a multi-level jump caused
+    // by a coin bonus) yields exactly the same speed and gap as applying each
+    // level's increment/reduction in sequence — no level is ever skipped.
+    // -------------------------------------------------------------------------
+
+    // Difficulty level for a given profit (Requirement 10.1 / Design:
+    // Difficulty). PURE: returns floor(profit / config.volatilityStep).
+    function difficultyLevel(profit, config) {
+      return Math.floor(profit / config.volatilityStep);
+    }
+
+    // Scroll speed for a given difficulty level, clamped to maxSpeed
+    // (Requirements 10.2, 10.3 / Design: Difficulty). PURE: returns
+    // min(initialSpeed + level * speedIncrement, maxSpeed). Monotonically
+    // non-decreasing in level.
+    function speedForLevel(level, config) {
+      return Math.min(
+        config.initialSpeed + level * config.speedIncrement,
+        config.maxSpeed
+      );
+    }
+
+    // Gap size for a given difficulty level, clamped to minGap (Requirements
+    // 10.2, 10.3 / Design: Difficulty). PURE: returns
+    // max(initialGap - level * gapReduction, minGap). Monotonically
+    // non-increasing in level.
+    function gapForLevel(level, config) {
+      return Math.max(
+        config.initialGap - level * config.gapReduction,
+        config.minGap
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Chart Generator (Background) (Requirements 11.2, 11.3, 11.4, 13.7 /
+    // Design: Chart Generator, Data Models: Segment)
+    //
+    // All functions here are PURE: they read only their arguments, never touch
+    // the DOM or module/global state, never mutate their inputs, and always
+    // return NEW arrays/objects. Randomness is injected via `rng` (a function
+    // returning a float in [0, 1)) so generation is deterministic under test.
+    //
+    // DATA SHAPE — a deliberate, documented simplification of the design's
+    // `Segment = { points: {x,y}[], dir }`:
+    //   We represent the chart as an array of connected POINTS forming a single
+    //   continuous price line:
+    //       Point = { x: number, y: number, dir: 'up' | 'down' | null }
+    //   Each point carries the `dir` of the sub-move that ARRIVES at it (the
+    //   step from the previous point): 'up' (green) when y DECREASED, 'down'
+    //   (red) when y INCREASED. Canvas y grows downward, so a decrease in y is
+    //   a visual UP move (palette.up / green) and an increase is a DOWN move
+    //   (palette.down / red) per Requirement 11.5. The very first/anchor point
+    //   has dir = null (no preceding move).
+    //
+    //   This "array of points" form is equivalent to one continuous Segment
+    //   whose per-point `dir` selects the stroke color; the renderer (task
+    //   13.1) consumes it by drawing a line between consecutive points, using
+    //   the second point's `dir` to pick the stroke color. CHART_STEP_PX is
+    //   exposed on `updateChart` so the renderer knows the horizontal spacing.
+    // -------------------------------------------------------------------------
+
+    // Horizontal distance (px) between consecutive chart points. A fixed step
+    // gives each segment a known width, which makes right-edge coverage and
+    // left-edge culling simple and gap-free. Presentation detail, local to the
+    // chart generator.
+    var CHART_STEP_PX = 40;
+
+    // Baseline vertical random-walk amplitude (px) at level 0, plus the extra
+    // amplitude added per difficulty level. The per-step delta magnitude is a
+    // strictly increasing (monotonic non-decreasing) function of `level`, which
+    // is what makes higher volatility look more jagged (Requirement 13.7 /
+    // Design Property 26).
+    var CHART_BASE_AMPLITUDE = 18;   // px at level 0
+    var CHART_PER_LEVEL_AMPLITUDE = 6; // px added per level
+
+    // Vertical band the price line is clamped to, as fractions of canvasHeight,
+    // so the line always stays comfortably on-screen.
+    var CHART_MIN_Y_RATIO = 0.10;
+    var CHART_MAX_Y_RATIO = 0.90;
+
+    // Peak-to-peak amplitude (px) of the per-step vertical random walk for a
+    // given difficulty level. Monotonic non-decreasing in `level`. Exposed for
+    // clarity and so the monotonic-jaggedness property (26) can target it.
+    function chartAmplitudeForLevel(level) {
+      var lvl = level > 0 ? level : 0;
+      return CHART_BASE_AMPLITUDE + lvl * CHART_PER_LEVEL_AMPLITUDE;
+    }
+
+    // Produce the next point given the previous point, drawing a random-walk
+    // vertical delta from `rng` whose magnitude scales with `level`. PURE: the
+    // only source of nondeterminism is the injected `rng`. Canvas y grows
+    // downward, so dir is 'up' (green) when y decreases, 'down' (red) when y
+    // increases, and we never emit a dir of null here (that is reserved for the
+    // seed anchor point).
+    function chartNextPoint(prev, level, config, rng) {
+      var amplitude = chartAmplitudeForLevel(level);
+      // Symmetric delta in [-amplitude, +amplitude).
+      var delta = (rng() * 2 - 1) * amplitude;
+      var nextX = prev.x + CHART_STEP_PX;
+      var minY = config.canvasHeight * CHART_MIN_Y_RATIO;
+      var maxY = config.canvasHeight * CHART_MAX_Y_RATIO;
+      var nextY = prev.y + delta;
+      if (nextY < minY) nextY = minY;
+      if (nextY > maxY) nextY = maxY;
+      // Decrease in y => visual up-move (green); otherwise down-move (red).
+      var dir = nextY < prev.y ? 'up' : 'down';
+      return { x: nextX, y: nextY, dir: dir };
+    }
+
+    // updateChart(segments, dt, speed, level, config, rng) -> Point[]
+    //
+    // One pure chart-advance step (Requirements 11.2, 11.3, 11.4, 13.7 /
+    // Design: Chart Generator). Returns a NEW array of points; inputs are never
+    // mutated. Here `segments` is the array-of-points chart described above.
+    //
+    //   1. SCROLL (Req 11.2): shift every existing point left by `speed * dt`,
+    //      the same rate obstacles scroll at.
+    //   2. SEED: if the chart is empty, generate an initial run of points
+    //      covering [0, canvasWidth] using `rng` and `level`.
+    //   3. COVER (Req 11.3): while the rightmost point sits left of
+    //      canvasWidth + CHART_STEP_PX (a one-step margin so the right edge is
+    //      covered before it scrolls into view), append a new procedural point.
+    //   4. CULL (Req 11.4): drop points fully left of x = 0, but KEEP the last
+    //      point with x <= 0 so the leftmost visible segment keeps its left
+    //      anchor and the line stays continuous (no visible gap/repeat).
+    function updateChart(segments, dt, speed, level, config, rng) {
+      var shift = speed * dt;
+      var startY = config.canvasHeight * 0.5;
+
+      // --- Seed when empty: build a fresh run covering [0, canvasWidth]. ---
+      if (!segments || segments.length === 0) {
+        var seeded = [{ x: 0, y: startY, dir: null }];
+        while (seeded[seeded.length - 1].x < config.canvasWidth + CHART_STEP_PX) {
+          seeded.push(chartNextPoint(seeded[seeded.length - 1], level, config, rng));
+        }
+        return seeded;
+      }
+
+      // --- 1. Scroll: new array of shifted points (no input mutation). ---
+      var scrolled = segments.map(function (p) {
+        return { x: p.x - shift, y: p.y, dir: p.dir };
+      });
+
+      // --- 3. Cover the right edge with freshly generated points. ---
+      var rightLimit = config.canvasWidth + CHART_STEP_PX;
+      while (scrolled[scrolled.length - 1].x < rightLimit) {
+        scrolled.push(chartNextPoint(scrolled[scrolled.length - 1], level, config, rng));
+      }
+
+      // --- 4. Cull: keep everything with x >= 0, plus the single anchor point
+      //        immediately left of 0 (the last point with x <= 0) so the
+      //        leftmost on-screen segment keeps its left endpoint. ---
+      var firstVisible = 0;
+      for (var i = 0; i < scrolled.length; i++) {
+        if (scrolled[i].x >= 0) {
+          firstVisible = i;
+          break;
+        }
+        // Track the last point at/left of 0 as the anchor candidate.
+        firstVisible = i;
+      }
+      // Back up one so we retain the anchor point just left of x = 0 (if any).
+      var anchor = firstVisible > 0 && scrolled[firstVisible].x > 0
+        ? firstVisible - 1
+        : firstVisible;
+
+      return scrolled.slice(anchor);
+    }
+
+    // Expose the chart step width on the function so the renderer (task 13.1)
+    // can reference the horizontal spacing without re-declaring the constant.
+    updateChart.CHART_STEP_PX = CHART_STEP_PX;
+
+    // =========================================================================
+    // IO Layer (Storage, AudioManager, CanvasScaler, InputHandler, Renderer)
+    // — added in tasks 9–10, 13.
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Storage — high-score persistence over localStorage (Requirements 8.5,
+    // 9.1, 9.2, 9.3, 9.4 / Design: Storage behavior, localStorage Schema).
+    //
+    // This is IO code (not part of the pure logic core): it touches the
+    // localStorage side-effecting boundary. Per the design's Error Handling,
+    // the boundary is wrapped so any failure is isolated and converted into a
+    // safe no-op or in-memory fallback — Storage NEVER throws and NEVER
+    // surfaces an error to the player.
+    //
+    //   - Key: 'flappyKiro.highScore'; value is a stringified non-negative
+    //     integer. Absent/invalid is treated as 0 (Req 9.3).
+    //   - An in-memory cache holds the high score for the session so that if a
+    //     write to localStorage fails (quota exceeded, private mode), the value
+    //     still persists for the duration of the session (Req 9.4).
+    //   - The known high score is always max(in-memory cache, stored value).
+    // -------------------------------------------------------------------------
+    var Storage = (function () {
+      var KEY = 'flappyKiro.highScore';
+
+      // Session fallback cache. Survives write failures so the value persists
+      // in memory even when localStorage cannot be written.
+      var memoryHighScore = 0;
+
+      // Read a valid non-negative integer high score from localStorage, or
+      // null if it is missing, invalid, or the read throws. Never throws.
+      function readStored() {
+        try {
+          var raw = window.localStorage.getItem(KEY);
+          if (raw === null || raw === undefined) return null;
+          var n = parseInt(raw, 10);
+          if (isNaN(n) || n < 0) return null;
+          return n;
+        } catch (e) {
+          // localStorage may be unavailable (private mode, disabled). Swallow.
+          return null;
+        }
+      }
+
+      // getHighScore(): the known high score for this session, defined as the
+      // max of the stored value and the in-memory cache. Missing/invalid stored
+      // values contribute 0. Never throws (Req 9.2, 9.3).
+      function getHighScore() {
+        var stored = readStored();
+        if (stored === null) return memoryHighScore;
+        return Math.max(stored, memoryHighScore);
+      }
+
+      // setHighScore(n): record a new candidate high score. Writes to
+      // localStorage only when n exceeds the currently known high score
+      // (max of stored and in-memory). The in-memory cache is always advanced
+      // to the resulting max so the value persists for the session even if the
+      // localStorage write fails. Returns the resulting high score (the max).
+      // Never throws, never surfaces an error (Req 8.5, 9.1, 9.4).
+      function setHighScore(n) {
+        var current = getHighScore();
+        if (typeof n !== 'number' || isNaN(n) || n <= current) {
+          // Not a new record (or not a valid number) — nothing to persist.
+          return current;
+        }
+
+        // New record. Advance the in-memory cache first so the value is held
+        // for the session regardless of whether the write below succeeds.
+        memoryHighScore = n;
+
+        try {
+          window.localStorage.setItem(KEY, String(n));
+        } catch (e) {
+          // Quota exceeded / private mode / disabled storage. The in-memory
+          // cache already holds the value for the session — swallow silently.
+        }
+
+        return memoryHighScore;
+      }
+
+      return {
+        getHighScore: getHighScore,
+        setHighScore: setHighScore,
+      };
+    })();
+
+    // -------------------------------------------------------------------------
+    // AudioManager — sound effects for jump and game over (Requirements 7.4,
+    // 7.5, 12.1, 12.2, 12.3, 12.4, 12.5 / Design: AudioManager behavior).
+    //
+    // This is IO code (not part of the pure logic core): it touches the
+    // HTMLAudioElement side-effecting boundary. Per the design's Error
+    // Handling, every boundary is wrapped so any failure is isolated —
+    // AudioManager NEVER throws and NEVER surfaces an error (no dialog, no
+    // console message visible to the player, no UI change). Gameplay always
+    // continues, with or without sound.
+    //
+    //   - Two HTMLAudioElement instances are created from local relative
+    //     paths. Construction is wrapped in try/catch so a load failure can
+    //     never throw, and each element gets an 'error' handler that silently
+    //     ignores load failures (Req 12.5).
+    //   - play('jump'): reset currentTime = 0 then play() so rapid taps
+    //     restart the sound from the beginning (Req 12.1).
+    //   - play('gameover'): play() on Game Over entry (Req 7.4, 12.2).
+    //   - play() returns a Promise in modern browsers; its rejection (autoplay
+    //     policy, decode error, etc.) is caught and swallowed (Req 7.5, 12.4,
+    //     12.5).
+    //   - Autoplay policy (Req 12.3): browsers may reject play() until the
+    //     first user gesture. When that happens before unlock, the blocked
+    //     sound name is queued; the InputHandler (task 10) calls unlock() on
+    //     the first keydown/pointerdown, which marks the manager unlocked and
+    //     replays the queued sound.
+    // -------------------------------------------------------------------------
+    var AudioManager = (function () {
+      // Map of logical name -> HTMLAudioElement (or null if construction failed).
+      var elements = {
+        jump: createAudio('assets/jump.wav'),
+        gameover: createAudio('assets/game_over.wav'),
+      };
+
+      // Has a user gesture occurred yet? Until it has, autoplay-blocked sounds
+      // are queued rather than lost.
+      var unlocked = false;
+
+      // The last sound name blocked by autoplay policy while still locked.
+      // Replayed on unlock(). A single slot is enough: only one sound can be
+      // meaningfully pending before the first gesture (the start-screen jump
+      // does not exist; game-over cannot precede gameplay), and replaying the
+      // most recent blocked sound is the desired behavior.
+      var queued = null;
+
+      // Construct an HTMLAudioElement without ever throwing. Attaches an
+      // 'error' listener so load/decode failures are silently ignored
+      // (Req 12.5). Returns null if construction itself fails.
+      function createAudio(src) {
+        try {
+          var audio = new Audio(src);
+          audio.addEventListener('error', function () {
+            // Load/decode failed — ignore silently; gameplay continues.
+          });
+          return audio;
+        } catch (e) {
+          // Audio constructor unavailable or threw — no sound, no error.
+          return null;
+        }
+      }
+
+      // Attempt to start playback of the given element. Swallows both
+      // synchronous throws and asynchronous Promise rejections. If the
+      // rejection looks like an autoplay block and we are still locked, the
+      // sound name is queued for retry on the first user gesture (Req 12.3).
+      function attempt(audio, name) {
+        if (!audio) return; // Construction failed earlier — no-op.
+        try {
+          var result = audio.play();
+          if (result && typeof result.then === 'function') {
+            result.then(null, function () {
+              // Rejected: autoplay policy, decode error, interrupted, etc.
+              // If we have not yet been unlocked by a user gesture, remember
+              // this sound so unlock() can replay it. Either way, swallow.
+              if (!unlocked) {
+                queued = name;
+              }
+            });
+          }
+        } catch (e) {
+          // Synchronous failure from play() — swallow; queue if still locked.
+          if (!unlocked) {
+            queued = name;
+          }
+        }
+      }
+
+      // play(name): play one of the known sounds. 'jump' restarts from the
+      // beginning; 'gameover' plays from the start of the element. Unknown
+      // names are ignored. Never throws.
+      function play(name) {
+        var audio = elements[name];
+        if (!audio) return; // Unknown name or failed construction — no-op.
+
+        if (name === 'jump') {
+          try {
+            audio.currentTime = 0; // Restart so rapid taps re-trigger (Req 12.1).
+          } catch (e) {
+            // Setting currentTime can throw if not yet seekable — ignore.
+          }
+        }
+
+        attempt(audio, name);
+      }
+
+      // unlock(): called by the InputHandler on the first user gesture
+      // (keydown/pointerdown). Marks the manager unlocked and replays any
+      // sound that was blocked by autoplay policy before the gesture
+      // (Req 12.3). Never throws.
+      function unlock() {
+        unlocked = true;
+        if (queued) {
+          var name = queued;
+          queued = null;
+          play(name);
+        }
+      }
+
+      return {
+        play: play,
+        unlock: unlock,
+      };
+    })();
+
+    // -------------------------------------------------------------------------
+    // CanvasScaler — fits the canvas to the viewport while preserving the fixed
+    // 800:600 (4:3) logical aspect ratio (Requirement 13.5 / Design:
+    // CanvasScaler). The 800×600 backing store is NEVER touched; only the CSS
+    // display size (style.width/style.height) is adjusted, so all layout math
+    // keeps using stable logical coordinates. The remainder of the viewport is
+    // letterboxed (horizontal bars top/bottom) or pillarboxed (vertical bars
+    // left/right) depending on which dimension limits the fit.
+    //
+    // `computeCanvasDisplayRect` is a PURE helper (no DOM): given a viewport and
+    // the logical size it returns the CSS display rectangle that preserves the
+    // aspect ratio and fits entirely inside the viewport. It underpins the
+    // design's Property 27. The `fit`/resize wiring is the IO part.
+    // -------------------------------------------------------------------------
+
+    // Compute the CSS display rectangle for a logical canvas so it preserves the
+    // logical aspect ratio and fits entirely within the viewport. Returns
+    // { width, height, left, top } in px, where left/top are the offsets that
+    // would center the rect in the viewport (the letterbox/pillarbox bars).
+    // PURE: reads only its arguments, touches no DOM, mutates nothing.
+    function computeCanvasDisplayRect(viewportW, viewportH, logicalW, logicalH) {
+      var aspect = logicalW / logicalH; // 800 / 600 = 4:3
+      var width;
+      var height;
+
+      if (viewportW / viewportH > aspect) {
+        // Viewport is relatively WIDER than the canvas: height is the limiter.
+        // Fill the height and pillarbox (vertical bars left/right).
+        height = viewportH;
+        width = viewportH * aspect;
+      } else {
+        // Viewport is relatively TALLER (or equal): width is the limiter.
+        // Fill the width and letterbox (horizontal bars top/bottom).
+        width = viewportW;
+        height = viewportW / aspect;
+      }
+
+      return {
+        width: width,
+        height: height,
+        left: (viewportW - width) / 2,
+        top: (viewportH - height) / 2,
+      };
+    }
+
+    // IO wiring around computeCanvasDisplayRect. `fit` reads the live viewport
+    // and applies the computed display size as CSS on the canvas element,
+    // leaving the 800×600 backing store (canvas.width/height attributes)
+    // untouched. `init` performs an initial fit and binds a resize listener so
+    // the canvas re-fits whenever the viewport changes.
+    var CanvasScaler = (function () {
+      function fit(canvas) {
+        var rect = computeCanvasDisplayRect(
+          window.innerWidth,
+          window.innerHeight,
+          Config.canvasWidth,
+          Config.canvasHeight
+        );
+        // CSS display size only — the backing store stays 800×600.
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        return rect;
+      }
+
+      function init(canvas) {
+        fit(canvas);
+        window.addEventListener('resize', function () {
+          fit(canvas);
+        });
+      }
+
+      return {
+        fit: fit,
+        init: init,
+      };
+    })();
+
+    // -------------------------------------------------------------------------
+    // InputHandler — binds the raw DOM input events and forwards exactly one
+    // normalized input intent to the game (Requirements 2.4, 3.3, 3.4, 8.2,
+    // 8.7 / Design: InputHandler behavior).
+    //
+    // Separation of concerns / contract with task 11 (the game loop + FSM):
+    //
+    //   The InputHandler is responsible ONLY for the raw-event side of input:
+    //     (a) binding the DOM events (keydown + pointerdown),
+    //     (b) filtering them — preventDefault() on Spacebar so the page does
+    //         not scroll, and dropping auto-repeat (event.repeat) so a held
+    //         key cannot produce a continuous stream of actions,
+    //     (c) unlocking audio on the first user gesture (AudioManager.unlock),
+    //     (d) forwarding EXACTLY ONE normalized input to `handlers.onInput()`.
+    //
+    //   It deliberately does NOT know anything about the FSM state. The design
+    //   says "the handler routes each accepted input to a single action based
+    //   on the current FSM state" and "one input → exactly one action". To keep
+    //   the handler decoupled from game internals that do not exist yet, that
+    //   state-based routing lives in the game-supplied `onInput` callback
+    //   (implemented in task 11), NOT here.
+    //
+    //   `handlers.onInput()` (provided by task 11) is the single entry point
+    //   where the FSM decides what one action an accepted input maps to:
+    //     - START:     start the run (transition to PLAYING). Does NOT jump.
+    //     - GAME_OVER: if the 500 ms restart lockout (Req 8.2) has elapsed,
+    //                  restart (reset + transition to PLAYING). Does NOT jump.
+    //                  During the lockout the input is ignored entirely.
+    //     - PLAYING:   apply a single upward jump impulse (Req 3.3, 3.4).
+    //
+    //   Because the handler forwards each physical event as exactly one
+    //   onInput() call, and the FSM maps that one call to exactly one action,
+    //   the event that leaves START or GAME_OVER is "consumed" by the
+    //   transition and never ALSO jumps in the same event (Req 3.3, 3.4,
+    //   8.2, 8.7). The first real jump requires a subsequent input received
+    //   while already in PLAYING.
+    //
+    // This is IO code (not part of the pure logic core): it touches the DOM
+    // event boundary. It is intentionally robust — a missing/invalid
+    // `handlers.onInput` is guarded against so a stray event can never throw.
+    // -------------------------------------------------------------------------
+    var InputHandler = (function () {
+      // Fire exactly one normalized input intent at the game. Audio is unlocked
+      // on the first user gesture (keydown/pointerdown) per the autoplay policy
+      // (Req 12.3); then the single onInput() entry point is invoked once.
+      // Guarded so a missing handler can never throw.
+      function fire(handlers) {
+        AudioManager.unlock();
+        if (handlers && typeof handlers.onInput === 'function') {
+          handlers.onInput();
+        }
+      }
+
+      // init(canvas, handlers): bind the raw DOM events.
+      //   handlers = { onInput: function () { ... } }  (supplied by task 11)
+      function init(canvas, handlers) {
+        // Keyboard: only the Spacebar is a game input; all other keys are
+        // ignored so unrelated key presses never reach the game.
+        window.addEventListener('keydown', function (event) {
+          var isSpace = event.code === 'Space' || event.key === ' ';
+          if (!isSpace) {
+            return;
+          }
+          // Stop the browser from scrolling the page on Space (Req 2.4 area).
+          event.preventDefault();
+          // Drop OS key-repeat: a held key fires keydown repeatedly, but a
+          // single physical press must map to a single action, never a
+          // continuous stream of jumps/starts/restarts.
+          if (event.repeat) {
+            return;
+          }
+          fire(handlers);
+        });
+
+        // Pointer: pointerdown covers both mouse click and touch tap with a
+        // single listener, so one physical click/tap is one onInput() call
+        // (no double-firing from separate mouse/touch events). Bound to the
+        // canvas so only presses on the game surface count.
+        canvas.addEventListener('pointerdown', function () {
+          fire(handlers);
+        });
+      }
+
+      return {
+        init: init,
+      };
+    })();
+
+    // =========================================================================
+    // Game Loop + FSM (START / PLAYING / GAME_OVER)
+    //
+    // This wires the pure logic core and the IO layer into a running game
+    // (tasks 11.1, 11.4, 11.6). It owns the single module-scoped GameState,
+    // the delta-time requestAnimationFrame loop, the three-state finite-state
+    // machine, the per-frame PLAYING update, Game Over entry, and the restart
+    // flow with the 500 ms lockout.
+    //
+    //   - Task 11.1 (Game Loop): frame(now) computes a clamped delta time
+    //     dt = min((now - lastTime)/1000, maxDeltaTime), dispatches update(dt)
+    //     only while PLAYING, then render(ctx, state) by screen, and stores
+    //     lastTime (Requirements 14.1, 14.2, 14.3 / Design: Game Loop).
+    //   - Task 11.4 (FSM + update): update() advances physics, obstacle/coin
+    //     spawn+update, scoring, difficulty, and chart; on any collision or
+    //     boundary cross it transitions to GAME_OVER in the SAME frame; on
+    //     GAME_OVER entry it persists the high score and plays game-over audio;
+    //     because update() only runs in PLAYING, further hazard events are
+    //     ignored once in GAME_OVER (Requirements 2.1, 2.5, 4.1, 5.4, 7.1-7.4,
+    //     7.6, 10.4 / Design: State Machine).
+    //   - Task 11.6 (restart): GAME_OVER entry records gameOverAt; restart
+    //     input is ignored until restartLockoutMs has elapsed; a valid restart
+    //     builds a canonical fresh session and enters PLAYING directly — never
+    //     back to START (Requirements 8.2, 8.7, 10.4).
+    // =========================================================================
+
+    // The live RNG for the running game. The pure core takes an injected rng
+    // (a function returning a float in [0, 1)); in the live game we inject
+    // Math.random. Property tests inject a deterministic rng instead.
+    var liveRng = Math.random;
+
+    // Module-scoped GameState (Design: Data Models — Runtime State). Initialized
+    // to the START screen in bootstrap(); replaced wholesale by
+    // createFreshSession() on start and restart.
+    var state = null;
+
+    // The 2D rendering context, grabbed once in bootstrap().
+    var ctx = null;
+
+    // Timestamp of the previous animation frame (ms, from rAF). null until the
+    // first frame so the first frame's dt is guarded to 0 (no teleport on the
+    // very first step before a real elapsed interval exists).
+    var lastTime = null;
+
+    // Vertical center of the gap of the most recently spawned obstacle, so a
+    // newly spawned obstacle can be constrained to within maxGapDelta of it
+    // (Design: spawnObstacle / Property 30). Reset on each fresh session.
+    var lastGapCenterY = null;
+
+    // -------------------------------------------------------------------------
+    // createFreshSession(config, highScore) -> GameState
+    //
+    // Build a canonical fresh PLAYING session (Requirements 5.4, 8.7, 10.4 /
+    // Design Property 19). Used by BOTH the START->PLAYING transition and the
+    // GAME_OVER->PLAYING restart so the two paths are identical:
+    //   - profit 0, level 0, speed = initialSpeed, gapSize = gapForLevel(0)
+    //     (= initialGap), no obstacles, empty chart (seeded on first update),
+    //   - Ghosty at its starting position (y = playerStartYRatio*canvasHeight)
+    //     and zero velocity, spawnTimer 0, gameOverAt null,
+    //   - screen 'PLAYING' (enters play directly), highScore carried in.
+    // The injected highScore is preserved across runs. Resetting
+    // lastGapCenterY here is a module side effect tied to starting a session.
+    // -------------------------------------------------------------------------
+    function createFreshSession(config, highScore) {
+      lastGapCenterY = null;
+      return {
+        screen: 'PLAYING',
+        player: { y: config.playerStartYRatio * config.canvasHeight, vy: 0 },
+        obstacles: [],
+        chart: [],
+        profit: 0,
+        highScore: highScore,
+        level: 0,
+        speed: config.initialSpeed,
+        gapSize: gapForLevel(0, config), // == initialGap
+        spawnTimer: 0,
+        gameOverAt: null,
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // update(dt) — advance the simulation by one frame. Only called while
+    // PLAYING (the loop gates this), so once GAME_OVER is entered the physics
+    // and collision checks no longer run and further hazard events are ignored
+    // (Req 7.6). Mutates the module-scoped `state` by assigning fresh values
+    // produced by the pure core functions.
+    // -------------------------------------------------------------------------
+    function update(dt) {
+      // --- Physics: integrate Ghosty under gravity (Req 3.2, 14.1, 14.2). ---
+      state.player = integratePlayer(state.player, dt, Config);
+
+      // --- Obstacles: scroll left and cull off-screen (Req 4.3, 4.4). ---
+      state.obstacles = updateObstacles(state.obstacles, dt, state.speed);
+
+      // --- Chart background: scroll/cover/cull at the obstacle speed
+      //     (Req 11.2-11.4, 13.7). ---
+      state.chart = updateChart(state.chart, dt, state.speed, state.level, Config, liveRng);
+
+      // --- Spawn new obstacle pairs on the configured interval (Req 4.1,
+      //     4.7). The new gap is constrained relative to the previous gap
+      //     center and uses the CURRENT difficulty-driven gap size. ---
+      state.spawnTimer += dt;
+      if (shouldSpawn(state.spawnTimer, Config)) {
+        var obstacle = spawnObstacle(Config, state.gapSize, lastGapCenterY, liveRng);
+        // Maybe attach a coin at the gap midpoint (Req 6.1, 6.2).
+        obstacle.coin = maybeSpawnCoin(obstacle, Config, liveRng);
+        state.obstacles = state.obstacles.concat([obstacle]);
+        lastGapCenterY = obstacle.gapCenterY;
+        // Consume one interval's worth of accumulated time (carry remainder).
+        state.spawnTimer -= Config.spawnInterval;
+      }
+
+      // --- Scoring: +1 per gap whose right edge Ghosty just crossed; idempotent
+      //     on already-passed gaps (Req 5.1, 5.4). ---
+      var scored = scoreGapPasses(state.profit, state.obstacles, playerX(Config));
+      state.profit = scored.profit;
+      state.obstacles = scored.obstacles;
+
+      // --- Coins: collect any uncollected coin overlapping Ghosty's hitbox,
+      //     mark it collected, and add the bonus (Req 6.3, 6.4, 6.6). ---
+      var box = playerHitbox(state.player, Config);
+      for (var i = 0; i < state.obstacles.length; i++) {
+        var coin = state.obstacles[i].coin;
+        if (coin && !coin.collected && tryCollectCoin(box, coin)) {
+          coin.collected = true;
+          state.profit = addCoinBonus(state.profit, Config);
+        }
+      }
+
+      // --- Difficulty: recompute level/speed/gap as closed-form functions of
+      //     profit so no level is ever skipped on a coin-driven jump (Req
+      //     10.1, 10.2, 10.4). Changing gapSize affects only obstacles spawned
+      //     AFTER this point; existing obstacles keep their own gapSize. ---
+      state.level = difficultyLevel(state.profit, Config);
+      state.speed = speedForLevel(state.level, Config);
+      state.gapSize = gapForLevel(state.level, Config);
+
+      // --- Collision / boundaries: any obstacle hit OR boundary cross ends the
+      //     run in THIS frame (Req 7.1, 7.2, 7.3). Recompute the hitbox against
+      //     the post-integration player position. ---
+      if (hitsAnyObstacle(box, state.obstacles, Config) ||
+          boundaryCross(box, Config.canvasHeight) !== null) {
+        enterGameOver();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // enterGameOver() — transition PLAYING -> GAME_OVER (Req 7.4, 8.5, 9.1,
+    // 12.2). Records the entry timestamp for the 500 ms restart lockout,
+    // persists the high score (Storage returns max(session, stored) and only
+    // writes when a new record), and plays the game-over sound. Storage and
+    // AudioManager never throw, but the audio call is still wrapped defensively
+    // so the transition always completes.
+    // -------------------------------------------------------------------------
+    function enterGameOver() {
+      state.screen = 'GAME_OVER';
+      state.gameOverAt = performance.now(); // start the lockout clock (Req 8.2)
+      state.highScore = Storage.setHighScore(state.profit); // Req 8.5 / 9.1
+      try {
+        AudioManager.play('gameover'); // Req 7.4, 12.2
+      } catch (e) {
+        // Audio is best-effort; a failure must never block the transition.
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // onInput() — the single FSM entry point the InputHandler calls once per
+    // accepted physical input. One input maps to exactly one action, routed by
+    // the current screen, so starting/restarting a run never ALSO jumps in the
+    // same event (Design: InputHandler behavior; Req 2.4, 3.3, 3.4, 8.2, 8.7).
+    //   - START:     start a fresh run -> PLAYING (no jump).
+    //   - PLAYING:   apply one upward jump impulse and play the jump sound.
+    //   - GAME_OVER: restart -> PLAYING once restartLockoutMs has elapsed;
+    //                ignored entirely during the lockout.
+    // -------------------------------------------------------------------------
+    function onInput() {
+      if (!state) return;
+
+      if (state.screen === 'START') {
+        // First input begins the run directly in PLAYING (Req 2.4). No jump.
+        state = createFreshSession(Config, state.highScore);
+        return;
+      }
+
+      if (state.screen === 'PLAYING') {
+        // Unconditional upward impulse + jump sound (Req 3.3, 3.4, 12.1).
+        state.player = applyJump(state.player, Config);
+        AudioManager.play('jump');
+        return;
+      }
+
+      if (state.screen === 'GAME_OVER') {
+        // Ignore restart input until the 500 ms lockout has elapsed (Req 8.2).
+        var elapsed = performance.now() - state.gameOverAt;
+        if (elapsed >= Config.restartLockoutMs) {
+          // Valid restart: canonical fresh session, straight into PLAYING —
+          // never back to START (Req 8.7, 10.4).
+          state = createFreshSession(Config, state.highScore);
+        }
+        // Within the lockout: ignored entirely.
+        return;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Ghosty sprite loader (Design: Error Handling — "Sprite not yet loaded").
+    //
+    // One Image is created at module scope and pointed at the local relative
+    // asset. `ghostyLoaded` stays false until onload fires; drawGhosty guards
+    // on it and renders a placeholder rect until then, so a missing/slow image
+    // never crashes the game and keeps it playable (Req 3.1 robustness). The
+    // onerror handler leaves ghostyLoaded false silently — no error surfaced.
+    // -------------------------------------------------------------------------
+    var ghostyImg = new Image();
+    var ghostyLoaded = false;
+    ghostyImg.onload = function () { ghostyLoaded = true; };
+    ghostyImg.onerror = function () { ghostyLoaded = false; };
+    ghostyImg.src = 'assets/ghosty.png';
+
+    // -------------------------------------------------------------------------
+    // Renderer — the full canvas 2D draw pipeline (tasks 13.1–13.4). Every draw
+    // uses ONLY Config.palette colors and fonts >= Config.minFontSize. Methods
+    // are grouped on this object; the top-level render(ctx, state) below
+    // dispatches by state.screen and composes them in the correct draw order
+    // (background+chart -> obstacles -> coins -> Ghosty -> HUD).
+    //
+    // References: Design — Renderer, Chart Generator, Obstacle System, Error
+    // Handling; requirements noted per method. Rendering ONLY: no game state is
+    // mutated here.
+    // -------------------------------------------------------------------------
+    var Renderer = {
+      // --- Shared font helper so every screen uses the same typography and
+      //     always honours the minFontSize floor (Req 13.2). ---
+      font: function (px, weight) {
+        var size = Math.max(Config.minFontSize, px);
+        return (weight ? weight + ' ' : '') + size + 'px "Segoe UI", system-ui, sans-serif';
+      },
+
+      // --- Shared color helpers so every translucent fill/stroke is DERIVED
+      //     from Config.palette rather than an independent magic color. This
+      //     keeps all three screens on the one palette (Req 13.1) — overlays,
+      //     bars, and panels are just the palette colors at reduced alpha. ---
+
+      // Parse a '#rrggbb' palette hex into { r, g, b }. Presentation-only
+      // helper; the palette is the single source of truth for every color.
+      _rgb: function (hex) {
+        var h = hex.replace('#', '');
+        return {
+          r: parseInt(h.substring(0, 2), 16),
+          g: parseInt(h.substring(2, 4), 16),
+          b: parseInt(h.substring(4, 6), 16),
+        };
+      },
+
+      // Convert a palette hex + alpha into an 'rgba(...)' string. Used for
+      // translucent bg bars/overlays (from palette.bg) and faint rules (from
+      // palette.text) so there are no screen-exclusive colors (Req 13.1).
+      withAlpha: function (hex, alpha) {
+        var c = this._rgb(hex);
+        return 'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + alpha + ')';
+      },
+
+      // A neutral panel surface derived from palette.bg: the background color
+      // lightened toward palette.text by a small amount, then taken at alpha.
+      // This keeps the Game Over panel readable while still being sourced from
+      // the palette (no unrelated hardcoded surface color).
+      panelSurface: function (alpha) {
+        var bg = this._rgb(Config.palette.bg);
+        var text = this._rgb(Config.palette.text);
+        var mix = 0.08; // small lift toward the light text color
+        var r = Math.round(bg.r + (text.r - bg.r) * mix);
+        var g = Math.round(bg.g + (text.g - bg.g) * mix);
+        var b = Math.round(bg.b + (text.b - bg.b) * mix);
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+      },
+
+      // --- 13.1: Background fill + procedural stock chart. ---
+      // Fills the whole canvas with palette.bg, then strokes the chart as a
+      // connected polyline across state.chart points. Each segment is coloured
+      // by the DESTINATION point's dir: 'up' -> green, 'down' -> red (Req 11.1,
+      // 11.5). Drawn thin and slightly translucent so it reads as a background
+      // behind obstacles/coins/Ghosty/HUD.
+      drawBackground: function (ctx, state) {
+        var W = Config.canvasWidth;
+        var H = Config.canvasHeight;
+        var pal = Config.palette;
+
+        ctx.fillStyle = pal.bg;
+        ctx.fillRect(0, 0, W, H);
+
+        var chart = state.chart;
+        if (!chart || chart.length < 2) return;
+
+        ctx.save();
+        ctx.globalAlpha = 0.55;       // subtle — it's a background layer
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        for (var c = 1; c < chart.length; c++) {
+          var p0 = chart[c - 1];
+          var p1 = chart[c];
+          // Destination point's dir picks the colour; a null dir (seed point)
+          // falls back to the up colour so the line stays visible.
+          ctx.strokeStyle = p1.dir === 'down' ? pal.down : pal.up;
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      },
+
+      // --- 13.2 (obstacles): candlestick pillars. ---
+      // Each pillar is drawn as a candlestick: a BODY rect spanning the full
+      // obstacle width, plus a thin WICK (Config.wickWidth) centered on the
+      // pillar extending from the body toward the gap opening. Top pillar red
+      // (palette.down), bottom pillar green (palette.up) — Req 4.2.
+      drawObstacles: function (ctx, state) {
+        var pal = Config.palette;
+        var wickW = Config.wickWidth;
+
+        for (var o = 0; o < state.obstacles.length; o++) {
+          var pillars = obstaclePillars(state.obstacles[o], Config);
+          var top = pillars.top;
+          var bottom = pillars.bottom;
+          var wickX;
+
+          // Top pillar (RED): body hangs from the canvas top; wick drops from
+          // the body's bottom edge down toward the gap.
+          if (top.h > 0) {
+            ctx.fillStyle = pal.down;
+            ctx.fillRect(top.x, top.y, top.w, top.h);
+            wickX = top.x + top.w / 2 - wickW / 2;
+            ctx.fillRect(wickX, top.y + top.h, wickW, Math.min(wickW * 2, 18));
+          }
+
+          // Bottom pillar (GREEN): body sits against the canvas bottom; wick
+          // rises from the body's top edge up toward the gap.
+          if (bottom.h > 0) {
+            ctx.fillStyle = pal.up;
+            ctx.fillRect(bottom.x, bottom.y, bottom.w, bottom.h);
+            wickX = bottom.x + bottom.w / 2 - wickW / 2;
+            var wickLen = Math.min(wickW * 2, 18);
+            ctx.fillRect(wickX, bottom.y - wickLen, wickW, wickLen);
+          }
+        }
+      },
+
+      // --- 13.2 (coins): uncollected gold coins at the gap midpoint. ---
+      // Filled gold circle (palette.gold) at (coin.x, coin.y) with radius
+      // Config.coinRadius, plus a subtle darker-gold ring and a "$" glyph for
+      // readability (Req 6.2).
+      drawCoins: function (ctx, state) {
+        var pal = Config.palette;
+        for (var o = 0; o < state.obstacles.length; o++) {
+          var coin = state.obstacles[o].coin;
+          if (!coin || coin.collected) continue;
+
+          ctx.beginPath();
+          ctx.arc(coin.x, coin.y, coin.r, 0, Math.PI * 2);
+          ctx.fillStyle = pal.gold;
+          ctx.fill();
+
+          ctx.lineWidth = 2;
+          // Dark ring derived from palette.bg (translucent) — not a magic color.
+          ctx.strokeStyle = this.withAlpha(pal.bg, 0.5);
+          ctx.stroke();
+
+          ctx.fillStyle = pal.bg;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = this.font(Math.round(coin.r * 1.1), 'bold');
+          ctx.fillText('$', coin.x, coin.y + 1);
+        }
+      },
+
+      // --- 13.1: Ghosty sprite (or placeholder). ---
+      // The sprite is always rendered at Config.spriteWidth x spriteHeight,
+      // CENTERED on (playerX(Config), state.player.y) regardless of the PNG's
+      // natural size. Until the image loads (ghostyLoaded false), a rounded
+      // placeholder rect in a ghost-white tone is drawn in the same box so the
+      // game stays playable (Req 3.1 / Design: Error Handling).
+      drawGhosty: function (ctx, state) {
+        var sw = Config.spriteWidth;
+        var sh = Config.spriteHeight;
+        var cx = playerX(Config);
+        var cy = state.player.y;
+        var x = cx - sw / 2;
+        var y = cy - sh / 2;
+
+        if (ghostyLoaded) {
+          ctx.drawImage(ghostyImg, x, y, sw, sh);
+          return;
+        }
+
+        // Placeholder: rounded rect in the light text colour + two eyes so the
+        // "ghost" is recognizable before/without the sprite.
+        ctx.save();
+        ctx.fillStyle = Config.palette.text;
+        var r = 8;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + sw, y, x + sw, y + sh, r);
+        ctx.arcTo(x + sw, y + sh, x, y + sh, r);
+        ctx.arcTo(x, y + sh, x, y, r);
+        ctx.arcTo(x, y, x + sw, y, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = Config.palette.bg;
+        var eyeR = Math.max(2, sw * 0.08);
+        ctx.beginPath();
+        ctx.arc(cx - sw * 0.18, cy - sh * 0.08, eyeR, 0, Math.PI * 2);
+        ctx.arc(cx + sw * 0.18, cy - sh * 0.08, eyeR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      },
+
+      // --- 13.4: HUD bar across the bottom of the canvas. ---
+      // Semi-transparent dark bar over the bottom ~10% of the canvas. Centered
+      // main line "Score: N | High: M" (N = profit, M = highScore) in
+      // palette.text, with a "Volatility: L" indicator (L = current difficulty
+      // level) on the right side of the bar (Req 5.2, 5.3, 13.3, 13.6). All
+      // fonts >= Config.minFontSize.
+      drawHUD: function (ctx, state) {
+        var W = Config.canvasWidth;
+        var H = Config.canvasHeight;
+        var pal = Config.palette;
+
+        var barH = Math.round(H * 0.10);
+        var barY = H - barH;
+
+        ctx.save();
+        ctx.fillStyle = this.withAlpha(pal.bg, 0.82); // translucent palette.bg
+        ctx.fillRect(0, barY, W, barH);
+        ctx.strokeStyle = this.withAlpha(pal.text, 0.15); // faint palette.text rule
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, barY + 0.5);
+        ctx.lineTo(W, barY + 0.5);
+        ctx.stroke();
+
+        var midY = barY + barH / 2;
+        var score = Math.max(0, Math.floor(state.profit));
+        var high = Math.max(0, Math.floor(state.highScore));
+
+        // Main centered line (matches example-ui): Score | High.
+        ctx.fillStyle = pal.text;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = this.font(20, 'bold');
+        ctx.fillText('Score: ' + score + '  |  High: ' + high, W / 2, midY);
+
+        // Volatility indicator pinned to the right of the bar; the value equals
+        // the current difficulty level and so changes with it (Req 13.6).
+        ctx.textAlign = 'right';
+        ctx.font = this.font(16);
+        ctx.fillStyle = pal.gold;
+        ctx.fillText('Volatility: ' + state.level, W - 16, midY);
+        ctx.restore();
+      },
+
+      // --- 13.3: Start screen. ---
+      // Dark bg, large title, the Ghosty sprite, a finance subtitle, and a
+      // prompt that references BOTH inputs (Spacebar and click/tap). Shared
+      // palette + typography (Req 2.1, 2.2, 2.3).
+      drawStart: function (ctx, state) {
+        var W = Config.canvasWidth;
+        var H = Config.canvasHeight;
+        var pal = Config.palette;
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.fillStyle = pal.up;
+        ctx.font = this.font(56, 'bold');
+        ctx.fillText('Flappy Kiro', W / 2, H / 2 - 110);
+
+        ctx.fillStyle = pal.text;
+        ctx.font = this.font(18);
+        ctx.fillText('Trade the volatility. Bank the profit.', W / 2, H / 2 - 66);
+
+        // Ghosty shown at the vertical center (draw via the shared method so
+        // it uses the sprite or placeholder identically to gameplay).
+        this.drawGhosty(ctx, { player: { y: H / 2 } });
+
+        ctx.fillStyle = pal.text;
+        ctx.font = this.font(22, 'bold');
+        ctx.fillText('Press SPACE or click/tap to start', W / 2, H / 2 + 80);
+      },
+
+      // --- 13.3: Game Over screen. ---
+      // Dim overlay over the last play field, then a centered panel with the
+      // "Portfolio wiped out" message, final Profit (non-negative integer),
+      // High score, and a button-styled Restart control + prompt (Req 8.1, 8.3,
+      // 8.4, 8.6). Shared palette + typography.
+      drawGameOver: function (ctx, state) {
+        var W = Config.canvasWidth;
+        var H = Config.canvasHeight;
+        var pal = Config.palette;
+
+        // Dim the frozen play field behind the panel (translucent palette.bg).
+        ctx.fillStyle = this.withAlpha(pal.bg, 0.78);
+        ctx.fillRect(0, 0, W, H);
+
+        // Centered panel.
+        var panelW = 420;
+        var panelH = 320;
+        var panelX = (W - panelW) / 2;
+        var panelY = (H - panelH) / 2;
+        // Panel surface derived from palette.bg (slightly lifted toward text),
+        // not an unrelated hardcoded color.
+        ctx.fillStyle = this.panelSurface(0.95);
+        ctx.fillRect(panelX, panelY, panelW, panelH);
+        ctx.strokeStyle = pal.down;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+        var cx = W / 2;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.fillStyle = pal.down;
+        ctx.font = this.font(34, 'bold');
+        ctx.fillText('Portfolio wiped out', cx, panelY + 56);
+
+        var profit = Math.max(0, Math.floor(state.profit));
+        var high = Math.max(0, Math.floor(state.highScore));
+
+        ctx.fillStyle = pal.text;
+        ctx.font = this.font(24, 'bold');
+        ctx.fillText('Profit: ' + profit, cx, panelY + 118);
+        ctx.font = this.font(20);
+        ctx.fillText('High: ' + high, cx, panelY + 156);
+
+        // Button-styled Restart control.
+        var btnW = 200;
+        var btnH = 52;
+        var btnX = cx - btnW / 2;
+        var btnY = panelY + panelH - 96;
+        ctx.fillStyle = pal.up;
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.fillStyle = pal.bg;
+        ctx.font = this.font(22, 'bold');
+        ctx.fillText('Restart', cx, btnY + btnH / 2 + 1);
+
+        ctx.fillStyle = pal.text;
+        ctx.font = this.font(15);
+        ctx.fillText('Press SPACE or tap to restart', cx, btnY + btnH + 24);
+      }
+    };
+
+    // -------------------------------------------------------------------------
+    // render(ctx, state) — top-level dispatch (same signature the game loop
+    // already calls). Routes by state.screen and composes the Renderer methods
+    // in the correct draw order. This REPLACES the former temporary placeholder
+    // (tasks 13.1–13.4). Rendering only — no state mutation.
+    // -------------------------------------------------------------------------
+    function render(ctx, state) {
+      if (state.screen === 'START') {
+        Renderer.drawBackground(ctx, state); // bg (+ any chart) first
+        Renderer.drawStart(ctx, state);
+        return;
+      }
+
+      // PLAYING and GAME_OVER both render the live field; GAME_OVER then layers
+      // its overlay panel on top. Draw order: background+chart -> obstacles ->
+      // coins -> Ghosty -> HUD.
+      Renderer.drawBackground(ctx, state);
+      Renderer.drawObstacles(ctx, state);
+      Renderer.drawCoins(ctx, state);
+      Renderer.drawGhosty(ctx, state);
+      Renderer.drawHUD(ctx, state);
+
+      if (state.screen === 'GAME_OVER') {
+        Renderer.drawGameOver(ctx, state);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // frame(now) — the requestAnimationFrame callback (Req 14.1, 14.2, 14.3 /
+    // Design: Game Loop). Computes a clamped delta time, advances the
+    // simulation only while PLAYING, renders the current screen, stores
+    // lastTime, and schedules the next frame.
+    // -------------------------------------------------------------------------
+    function frame(now) {
+      // First frame: no prior timestamp, so dt is 0 (no teleport). Thereafter
+      // dt = min((now - lastTime)/1000, maxDeltaTime) clamps stalls/tab-switch
+      // spikes to 100 ms so positions never jump (Req 14.3).
+      var dt = lastTime === null
+        ? 0
+        : Math.min((now - lastTime) / 1000, Config.maxDeltaTime);
+
+      if (state.screen === 'PLAYING') {
+        update(dt);
+      }
+
+      render(ctx, state);
+
+      lastTime = now;
+      requestAnimationFrame(frame);
+    }
+
+    // -------------------------------------------------------------------------
+    // Bootstrap: grab the 2D context, fit the canvas, initialize the START
+    // state, wire input to the FSM entry point, and start the game loop. The
+    // game is fully playable from the START screen.
+    // -------------------------------------------------------------------------
+    (function bootstrap() {
+      var canvas = document.getElementById('game');
+      ctx = canvas.getContext('2d');
+
+      // Fit the canvas to the viewport (CSS size only) and re-fit on resize,
+      // preserving the 800×600 backing store (Requirement 13.5).
+      CanvasScaler.init(canvas);
+
+      // Initialize to the START screen (Req 2.5). highScore is read once from
+      // storage; a fresh session carries it forward across runs.
+      state = {
+        screen: 'START',
+        player: { y: Config.playerStartYRatio * Config.canvasHeight, vy: 0 },
+        obstacles: [],
+        chart: [],
+        profit: 0,
+        highScore: Storage.getHighScore(),
+        level: 0,
+        speed: Config.initialSpeed,
+        gapSize: Config.initialGap,
+        spawnTimer: 0,
+        gameOverAt: null,
+      };
+
+      // Route one normalized input to the FSM (start / jump / restart).
+      InputHandler.init(canvas, { onInput: onInput });
+
+      // Start the delta-time loop.
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
