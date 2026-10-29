@@ -2,7 +2,11 @@
 
 A retro, trading-themed endless scroller where **Ghosty** the ghost has to survive the market. Thread through candlestick obstacles, grab gold coins for bonus profit, and hang on as market volatility rises — one mistake and your portfolio is wiped out.
 
-![Flappy Kiro UI](img/example-ui.png)
+![Flappy Kiro gameplay](img/gameplay.png)
+
+## Demo
+
+Watch a short gameplay demo: **[Flappy Kiro demo video](https://www.awesomescreenshot.com/video/57908934?key=6cbc4dbbe8651f1d6187350f3cba49bd)**
 
 ## Features
 
@@ -37,3 +41,4 @@ The game was implemented task by task against that spec, keeping a clean split b
 ## Tech Stack
 
 Plain **HTML**, **CSS**, and **JavaScript** with an **HTML5 canvas** — no frameworks, no dependencies, no build tools. Everything ships in a single self-contained `index.html` plus the `assets/` folder.
+

@@ -53,3 +53,9 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+# Video files (demo recordings — share via link, not committed)
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mkv
