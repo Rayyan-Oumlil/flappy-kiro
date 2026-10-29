@@ -6,7 +6,7 @@ A retro, trading-themed endless scroller where **Ghosty** the ghost has to survi
 
 ## Demo
 
-Watch a short gameplay demo: **[Flappy Kiro demo video](https://www.awesomescreenshot.com/video/57908934?key=6cbc4dbbe8651f1d6187350f3cba49bd)**
+Watch a short gameplay demo: **[Flappy Kiro demo video](https://drive.google.com/file/d/1N3c6ZMqg6zG6AMwIrsa3HL8GKSD2S4ie/view?usp=sharing)**
 
 ## Features
 
@@ -41,4 +41,5 @@ The game was implemented task by task against that spec, keeping a clean split b
 ## Tech Stack
 
 Plain **HTML**, **CSS**, and **JavaScript** with an **HTML5 canvas** — no frameworks, no dependencies, no build tools. Everything ships in a single self-contained `index.html` plus the `assets/` folder.
+
 
